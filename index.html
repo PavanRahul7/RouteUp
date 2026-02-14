@@ -1,0 +1,84 @@
+
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Velocity Run Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Orbitron:wght@700&display=swap');
+      
+      html, body, #root {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family: 'Inter', sans-serif;
+      }
+      .font-display {
+        font-family: 'Orbitron', sans-serif;
+      }
+      
+      /* Smooth transitions */
+      .page-transition-enter {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      .page-transition-enter-active {
+        opacity: 1;
+        transform: translateY(0);
+        transition: opacity 300ms, transform 300ms;
+      }
+
+      /* Dark mode overrides for common components */
+      ::-webkit-scrollbar {
+        width: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #0f172a;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #334155;
+        border-radius: 3px;
+      }
+
+      /* Leaflet Customizations */
+      .leaflet-container {
+        background: #0f172a !important; /* Slightly lighter background to distinguish from app bg */
+        width: 100%;
+        height: 100%;
+      }
+      .leaflet-vignette {
+        box-shadow: inset 0 0 100px rgba(0,0,0,0.5);
+        pointer-events: none;
+      }
+      .route-glow {
+        filter: drop-shadow(0 0 5px #3b82f6);
+      }
+      /* Ensure markers are visible */
+      .custom-div-icon {
+        background: transparent;
+        border: none;
+      }
+    </style>
+<script type="importmap">
+{
+  "imports": {
+    "react/": "https://esm.sh/react@^19.2.4/",
+    "react": "https://esm.sh/react@^19.2.4",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+    "recharts": "https://esm.sh/recharts@^3.7.0",
+    "@google/genai": "https://esm.sh/@google/genai@^1.41.0"
+  }
+}
+</script>
+</head>
+<body class="bg-slate-950 text-slate-50 overflow-hidden">
+    <div id="root"></div>
+</body>
+</html>

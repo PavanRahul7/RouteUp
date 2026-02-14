@@ -1,22 +1,26 @@
+
 import React, { useState, useEffect, useRef } from 'react';
-import { Route, LatLng, RunHistory } from '../types';
+import { Route, LatLng, RunHistory, UnitSystem } from '../types';
 import { storageService } from '../services/storageService';
 import { geminiService } from '../services/geminiService';
+import { offlineService } from '../services/offlineService';
+import { formatDistance, formatPace, getPaceUnit } from '../services/unitUtils';
 
 declare var L: any;
 
 interface LiveTrackingProps {
   route: Route;
+  unitSystem: UnitSystem;
   onFinish: (run: RunHistory) => void;
   onCancel: () => void;
 }
 
-const LiveTracking: React.FC<LiveTrackingProps> = ({ route, onFinish, onCancel }) => {
+const LiveTracking: React.FC<LiveTrackingProps> = ({ route, unitSystem, onFinish, onCancel }) => {
   const [currentPos, setCurrentPos] = useState<LatLng | null>(null);
   const [actualPath, setActualPath] = useState<LatLng[]>([]);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
-  const [distanceCovered, setDistanceCovered] = useState(0);
+  const [distanceCovered, setDistanceCovered] = useState(0); // in km
   const [isOffRoute, setIsOffRoute] = useState(false);
   const [mapReady, setMapReady] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(3);
@@ -27,6 +31,7 @@ const LiveTracking: React.FC<LiveTrackingProps> = ({ route, onFinish, onCancel }
   const actualLineRef = useRef<any>(null);
   const watchId = useRef<number | null>(null);
   const timerRef = useRef<number | null>(null);
+  const lastCoords = useRef<LatLng | null>(null);
 
   useEffect(() => {
     if (countdown === null) return;
@@ -54,7 +59,31 @@ const LiveTracking: React.FC<LiveTrackingProps> = ({ route, onFinish, onCancel }
           attributionControl: false
         }).setView([route.path[0].lat, route.path[0].lng], 18);
 
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(mapInstance.current);
+        // Custom Offline Tile Layer
+        const OfflineLayer = L.TileLayer.extend({
+          createTile: function(coords: any, done: any) {
+            const tile = document.createElement('img');
+            const key = `${coords.z}/${coords.x}/${coords.y}`;
+            
+            offlineService.getTile(key).then(blob => {
+              if (blob) {
+                const url = URL.createObjectURL(blob);
+                tile.src = url;
+                tile.onload = () => {
+                  URL.revokeObjectURL(url);
+                  done(null, tile);
+                };
+              } else {
+                tile.src = this.getTileUrl(coords);
+                tile.onload = () => done(null, tile);
+                tile.onerror = () => done(new Error('Tile load error'), tile);
+              }
+            });
+            return tile;
+          }
+        });
+
+        new OfflineLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(mapInstance.current);
 
         L.polyline(route.path, {
           color: '#3b82f6',
@@ -96,6 +125,13 @@ const LiveTracking: React.FC<LiveTrackingProps> = ({ route, onFinish, onCancel }
           if (isPaused) return;
           const newPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
           setCurrentPos(newPos);
+          
+          if (lastCoords.current) {
+            const dist = L.latLng(lastCoords.current.lat, lastCoords.current.lng).distanceTo(L.latLng(newPos.lat, newPos.lng));
+            setDistanceCovered(prev => prev + (dist / 1000));
+          }
+          lastCoords.current = newPos;
+
           setActualPath(prev => {
             const next = [...prev, newPos];
             if (actualLineRef.current) actualLineRef.current.setLatLngs(next);
@@ -105,7 +141,6 @@ const LiveTracking: React.FC<LiveTrackingProps> = ({ route, onFinish, onCancel }
           if (markerRef.current) markerRef.current.setLatLng([newPos.lat, newPos.lng]);
           if (mapInstance.current) mapInstance.current.panTo([newPos.lat, newPos.lng], { animate: true });
 
-          setDistanceCovered(prev => prev + 0.002); 
           checkOffRoute(newPos);
         },
         (err) => console.error(err),
@@ -138,7 +173,7 @@ const LiveTracking: React.FC<LiveTrackingProps> = ({ route, onFinish, onCancel }
       if (dist < minDistance) minDistance = dist;
     });
 
-    const off = minDistance > 40; 
+    const off = minDistance > 50; 
     if (off && !isOffRoute) {
       if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
     }
@@ -154,7 +189,7 @@ const LiveTracking: React.FC<LiveTrackingProps> = ({ route, onFinish, onCancel }
       : `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const calculatePace = () => {
+  const getCurrentPaceMinKm = () => {
     if (distanceCovered === 0) return "0:00";
     const mins = elapsedTime / 60;
     const pace = mins / distanceCovered;
@@ -164,7 +199,7 @@ const LiveTracking: React.FC<LiveTrackingProps> = ({ route, onFinish, onCancel }
   };
 
   const handleStop = async () => {
-    const pace = calculatePace();
+    const paceMinKm = getCurrentPaceMinKm();
     const run: RunHistory = {
       id: Math.random().toString(36).substr(2, 9),
       routeId: route.id,
@@ -172,7 +207,7 @@ const LiveTracking: React.FC<LiveTrackingProps> = ({ route, onFinish, onCancel }
       date: Date.now(),
       duration: elapsedTime,
       distance: parseFloat(distanceCovered.toFixed(2)),
-      averagePace: pace,
+      averagePace: paceMinKm,
       actualPath: actualPath,
     };
     
@@ -184,10 +219,11 @@ const LiveTracking: React.FC<LiveTrackingProps> = ({ route, onFinish, onCancel }
   };
 
   const progress = Math.min((distanceCovered / route.distance) * 100, 100);
+  const distInfo = formatDistance(distanceCovered, unitSystem);
+  const paceInfo = formatPace(getCurrentPaceMinKm(), unitSystem);
 
   return (
     <div className="fixed inset-0 z-[200] bg-slate-950 flex flex-col animate-in fade-in duration-700 overflow-hidden">
-      {/* Countdown Overlay */}
       {countdown !== null && (
         <div className="absolute inset-0 z-[3000] bg-slate-950/80 backdrop-blur-2xl flex flex-col items-center justify-center">
            <span className="text-[10px] font-black uppercase tracking-[0.5em] opacity-40 mb-8">Get Ready</span>
@@ -196,17 +232,15 @@ const LiveTracking: React.FC<LiveTrackingProps> = ({ route, onFinish, onCancel }
            </div>
            <div className="mt-12 text-center space-y-2">
               <div className="text-xl font-bold tracking-tight">{route.name}</div>
-              <div className="text-[10px] font-black uppercase tracking-widest opacity-30">{route.distance} KM Target</div>
+              <div className="text-[10px] font-black uppercase tracking-widest opacity-30">{formatDistance(route.distance, unitSystem).value} {formatDistance(route.distance, unitSystem).unit} Target</div>
            </div>
         </div>
       )}
 
-      {/* Map Backdrop */}
       <div className="flex-1 bg-slate-900 relative">
         <div ref={mapRef} className="w-full h-full" />
         <div className="absolute inset-0 bg-gradient-to-b from-[var(--bg-color)]/60 via-transparent to-[var(--bg-color)]/80 pointer-events-none" />
 
-        {/* HUD Alerts */}
         {isOffRoute && (
           <div className="absolute top-16 left-8 right-8 z-[1005]">
             <div className="bg-red-600 shadow-2xl shadow-red-900/40 text-white p-6 rounded-[2rem] flex items-center justify-between border border-white/20">
@@ -221,13 +255,11 @@ const LiveTracking: React.FC<LiveTrackingProps> = ({ route, onFinish, onCancel }
                    <div className="text-lg font-bold leading-none">Off Path Warning</div>
                 </div>
               </div>
-              <svg className="w-5 h-5 opacity-40" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd"/></svg>
             </div>
           </div>
         )}
       </div>
 
-      {/* Cockpit Controls */}
       <div className="bg-[var(--glass-bg)] backdrop-blur-3xl border-t border-[var(--border-color)] px-10 pt-12 pb-16 space-y-12 relative z-[1010]">
         <div className="absolute -top-1 left-0 right-0 h-1.5 bg-white/5">
            <div 
@@ -238,9 +270,9 @@ const LiveTracking: React.FC<LiveTrackingProps> = ({ route, onFinish, onCancel }
 
         <div className="flex justify-between items-end">
           <div className="space-y-2">
-            <span className="text-[10px] font-black uppercase tracking-[0.4em] opacity-40 font-display">Kilometers</span>
+            <span className="text-[10px] font-black uppercase tracking-[0.4em] opacity-40 font-display">{distInfo.unit}S</span>
             <div className="text-8xl font-display font-black text-white tracking-tighter leading-none">
-              {distanceCovered.toFixed(2)}
+              {distInfo.value}
             </div>
           </div>
           <div className="text-right space-y-2">
@@ -251,8 +283,8 @@ const LiveTracking: React.FC<LiveTrackingProps> = ({ route, onFinish, onCancel }
 
         <div className="grid grid-cols-2 gap-6">
           <div className="bg-white/5 p-8 rounded-[2.5rem] border border-white/5 flex flex-col items-center">
-            <span className="text-[10px] uppercase font-black tracking-widest opacity-40 mb-2">Split Pace</span>
-            <div className="text-4xl font-display text-[var(--accent-secondary)]">{calculatePace()}</div>
+            <span className="text-[10px] uppercase font-black tracking-widest opacity-40 mb-2">Pace ({getPaceUnit(unitSystem)})</span>
+            <div className="text-4xl font-display text-[var(--accent-secondary)]">{paceInfo}</div>
           </div>
           <div className="bg-white/5 p-8 rounded-[2.5rem] border border-white/5 flex flex-col items-center">
             <span className="text-[10px] uppercase font-black tracking-widest opacity-40 mb-2">Completion</span>

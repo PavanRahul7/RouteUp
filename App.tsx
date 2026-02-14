@@ -1,6 +1,9 @@
+
 import React, { useState, useEffect } from 'react';
-import { AppTab, Route, RunHistory, UserProfile, Difficulty, ThemeType, RunClub, Review } from './types';
+import { AppTab, Route, RunHistory, UserProfile, Difficulty, ThemeType, RunClub, Review, UnitSystem } from './types';
 import { storageService } from './services/storageService';
+import { offlineService } from './services/offlineService';
+import { formatDistance, formatElevation, formatPace, getPaceUnit } from './services/unitUtils';
 import BottomNav from './components/BottomNav';
 import RouteDetail from './components/RouteDetail';
 import LiveTracking from './components/LiveTracking';
@@ -24,6 +27,19 @@ const App: React.FC = () => {
   const [pendingReviewRoute, setPendingReviewRoute] = useState<Route | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [theme, setTheme] = useState<ThemeType>('barista');
+  const [unitSystem, setUnitSystem] = useState<UnitSystem>('metric');
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [offlineRouteIds, setOfflineRouteIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const handleStatus = () => setIsOnline(navigator.onLine);
+    window.addEventListener('online', handleStatus);
+    window.addEventListener('offline', handleStatus);
+    return () => {
+      window.removeEventListener('online', handleStatus);
+      window.removeEventListener('offline', handleStatus);
+    };
+  }, []);
 
   useEffect(() => {
     setRoutes(storageService.getRoutes());
@@ -31,10 +47,16 @@ const App: React.FC = () => {
     setRuns(storageService.getRuns());
     const p = storageService.getProfile();
     setProfile(p);
-    if (p.theme) {
-      setTheme(p.theme);
-    }
+    if (p.theme) setTheme(p.theme);
+    if (p.unitSystem) setUnitSystem(p.unitSystem);
+
+    checkOfflineRoutes();
   }, []);
+
+  const checkOfflineRoutes = async () => {
+    const offRoutes = await offlineService.getOfflineRoutes();
+    setOfflineRouteIds(new Set(offRoutes.map(r => r.id)));
+  };
 
   useEffect(() => {
     const html = document.documentElement;
@@ -103,6 +125,15 @@ const App: React.FC = () => {
     }
   };
 
+  const handleUnitSystemChange = (newSystem: UnitSystem) => {
+    setUnitSystem(newSystem);
+    if (profile) {
+      const updatedProfile = { ...profile, unitSystem: newSystem };
+      setProfile(updatedProfile);
+      storageService.saveProfile(updatedProfile);
+    }
+  };
+
   const handleManualReview = (run: RunHistory) => {
     const route = routes.find(r => r.id === run.routeId);
     if (route) setPendingReviewRoute(route);
@@ -127,6 +158,12 @@ const App: React.FC = () => {
 
   return (
     <div className="h-screen w-full flex flex-col overflow-hidden transition-all duration-500">
+      {!isOnline && (
+        <div className="bg-amber-600 text-white text-[10px] font-black uppercase tracking-[0.3em] py-2 text-center animate-in slide-in-from-top duration-300 shrink-0">
+          Offline Mode Activated • Browsing Local Brews
+        </div>
+      )}
+      
       <header className="px-8 pt-12 pb-8 flex justify-between items-end z-40 bg-gradient-to-b from-[var(--bg-color)] to-transparent shrink-0">
         <div className="space-y-1">
           <span className="text-[10px] font-bold tracking-[0.2em] uppercase opacity-40 ml-0.5">Running from our problems toward caffeine</span>
@@ -142,7 +179,9 @@ const App: React.FC = () => {
           >
             <div className="text-right hidden sm:block">
               <div className="text-xs font-bold leading-tight" style={{ color: 'var(--text-main)' }}>{profile.username}</div>
-              <div className="text-[9px] uppercase tracking-widest font-black opacity-40">{profile.stats.totalDistance.toFixed(0)} KM BREWED</div>
+              <div className="text-[9px] uppercase tracking-widest font-black opacity-40">
+                {formatDistance(profile.stats.totalDistance, unitSystem).value} {formatDistance(profile.stats.totalDistance, unitSystem).unit} BREWED
+              </div>
             </div>
             <img src={profile.avatar} className="w-10 h-10 rounded-xl object-cover ring-2 ring-[var(--accent-primary)] ring-offset-2 ring-offset-[var(--bg-color)] shadow-xl" alt="User" />
           </button>
@@ -166,74 +205,59 @@ const App: React.FC = () => {
               </svg>
             </div>
 
-            {!searchQuery && (
-              <section className="space-y-6">
-                <div className="flex justify-between items-end px-1">
-                  <h2 className="text-xs font-black uppercase tracking-[0.3em] opacity-40 font-coffee">Staff Picks</h2>
-                  <span className="text-[10px] font-bold opacity-30 uppercase tracking-widest">Roasted Recently</span>
-                </div>
-                <div className="flex gap-6 overflow-x-auto pb-6 -mx-8 px-8 snap-x">
-                   {routes.slice(0, 3).map(route => (
-                     <div 
-                      key={route.id} 
-                      onClick={() => setSelectedRoute(route)}
-                      className="min-w-[320px] h-48 rounded-[2.5rem] bg-slate-800 relative overflow-hidden snap-center cursor-pointer group card-shadow"
-                     >
-                        <img src={`https://picsum.photos/seed/${route.id}/800/450`} className="absolute inset-0 w-full h-full object-cover grayscale-[0.3] group-hover:grayscale-0 group-hover:scale-110 transition-all duration-700" alt="" />
-                        <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-color)] via-transparent to-transparent" />
-                        <div className="absolute bottom-6 left-6">
-                           <h3 className="text-2xl font-bold leading-none mb-1">{route.name}</h3>
-                           <div className="text-[10px] font-black uppercase tracking-widest opacity-60">{route.distance} KM • {route.difficulty}</div>
-                        </div>
-                     </div>
-                   ))}
-                </div>
-              </section>
-            )}
-
             <section className="space-y-8">
               <div className="flex justify-between items-end px-1">
                 <h2 className="text-xs font-black uppercase tracking-[0.3em] opacity-40 font-coffee">Daily Brews</h2>
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                {filteredRoutes.map(route => (
-                  <div 
-                    key={route.id} 
-                    onClick={() => setSelectedRoute(route)}
-                    className="group relative bg-[var(--card-bg)] rounded-[3rem] border border-[var(--border-color)] overflow-hidden cursor-pointer hover:translate-y-[-6px] transition-all duration-500 card-shadow"
-                  >
-                    <div className="h-64 relative overflow-hidden">
-                      <img 
-                        src={`https://picsum.photos/seed/${route.id}/800/600`} 
-                        className="w-full h-full object-cover grayscale-[0.4] group-hover:scale-110 group-hover:grayscale-0 transition-all duration-1000" 
-                        alt={route.name} 
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-color)]/95 via-transparent to-transparent opacity-90" />
-                      <div className="absolute top-6 left-6 flex flex-wrap gap-2">
-                        <span className={`px-4 py-2 rounded-full text-[9px] font-black tracking-widest uppercase backdrop-blur-xl border ${
-                          route.difficulty === Difficulty.HARD ? 'bg-red-500/20 border-red-500/30 text-red-400' : 
-                          route.difficulty === Difficulty.MODERATE ? 'bg-amber-500/20 border-amber-500/30 text-amber-400' : 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400'
-                        }`}>
-                          {route.difficulty}
-                        </span>
-                      </div>
-                      <div className="absolute bottom-6 left-8 right-8 flex items-end justify-between">
-                        <div className="space-y-1">
-                          <h3 className="text-3xl font-bold text-white group-hover:text-[var(--accent-primary)] transition-colors tracking-tight">{route.name}</h3>
-                          <div className="flex items-center gap-3 text-[10px] font-black uppercase tracking-widest text-white/40">
-                            <span>{route.creatorName}</span>
-                            <span className="w-1 h-1 rounded-full bg-white/10"></span>
-                            <span>{route.rating} ★</span>
-                          </div>
+                {filteredRoutes.map(route => {
+                  const distInfo = formatDistance(route.distance, unitSystem);
+                  const isOffline = offlineRouteIds.has(route.id);
+                  return (
+                    <div 
+                      key={route.id} 
+                      onClick={() => setSelectedRoute(route)}
+                      className="group relative bg-[var(--card-bg)] rounded-[3rem] border border-[var(--border-color)] overflow-hidden cursor-pointer hover:translate-y-[-6px] transition-all duration-500 card-shadow"
+                    >
+                      <div className="h-64 relative overflow-hidden">
+                        <img 
+                          src={`https://picsum.photos/seed/${route.id}/800/600`} 
+                          className="w-full h-full object-cover grayscale-[0.4] group-hover:scale-110 group-hover:grayscale-0 transition-all duration-1000" 
+                          alt={route.name} 
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-color)]/95 via-transparent to-transparent opacity-90" />
+                        <div className="absolute top-6 left-6 flex flex-wrap gap-2">
+                          <span className={`px-4 py-2 rounded-full text-[9px] font-black tracking-widest uppercase backdrop-blur-xl border ${
+                            route.difficulty === Difficulty.HARD ? 'bg-red-500/20 border-red-500/30 text-red-400' : 
+                            route.difficulty === Difficulty.MODERATE ? 'bg-amber-500/20 border-amber-500/30 text-amber-400' : 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400'
+                          }`}>
+                            {route.difficulty}
+                          </span>
+                          {isOffline && (
+                            <span className="bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 px-3 py-2 rounded-full text-[9px] font-black tracking-widest uppercase backdrop-blur-xl flex items-center gap-1">
+                               <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+                               Offline
+                            </span>
+                          )}
                         </div>
-                        <div className="bg-[var(--accent-primary)] px-5 py-2.5 rounded-2xl text-[10px] font-black tracking-widest text-[var(--bg-color)] shadow-2xl shadow-[var(--accent-primary)]/40 uppercase">
-                          {route.distance.toFixed(1)} KM
+                        <div className="absolute bottom-6 left-8 right-8 flex items-end justify-between">
+                          <div className="space-y-1">
+                            <h3 className="text-3xl font-bold text-white group-hover:text-[var(--accent-primary)] transition-colors tracking-tight">{route.name}</h3>
+                            <div className="flex items-center gap-3 text-[10px] font-black uppercase tracking-widest text-white/40">
+                              <span>{route.creatorName}</span>
+                              <span className="w-1 h-1 rounded-full bg-white/10"></span>
+                              <span>{route.rating} ★</span>
+                            </div>
+                          </div>
+                          <div className="bg-[var(--accent-primary)] px-5 py-2.5 rounded-2xl text-[10px] font-black tracking-widest text-[var(--bg-color)] shadow-2xl shadow-[var(--accent-primary)]/40 uppercase">
+                            {distInfo.value} {distInfo.unit}
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </section>
           </div>
@@ -241,55 +265,6 @@ const App: React.FC = () => {
 
         {activeTab === 'friends' && profile && (
           <FriendsList currentUser={profile} onUpdate={setProfile} />
-        )}
-
-        {activeTab === 'clubs' && (
-          <div className="space-y-10 fade-slide-up">
-            <div className="flex justify-between items-end">
-              <div className="space-y-1">
-                <h2 className="text-4xl font-display font-bold text-[var(--text-main)]">RUN CLUBS</h2>
-                <p className="text-xs font-bold opacity-30 uppercase tracking-[0.2em]">Community Roast Circles</p>
-              </div>
-              <button 
-                onClick={() => setIsAddingClub(true)}
-                className="bg-[var(--accent-primary)]/10 text-[var(--accent-primary)] px-5 py-2 rounded-full border border-[var(--accent-primary)]/20 text-[10px] font-black uppercase tracking-[0.2em] hover:bg-[var(--accent-primary)]/20 active:scale-95 transition-all"
-              >
-                + NEW CIRCLE
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              {clubs.map(club => {
-                const isJoined = profile?.joinedClubIds.includes(club.id);
-                return (
-                  <div key={club.id} className="bg-[var(--card-bg)] rounded-[3rem] border border-[var(--border-color)] overflow-hidden transition-all duration-500 card-shadow group">
-                    <div className="p-8 flex gap-6">
-                      <img src={club.logo} className="w-24 h-24 rounded-3xl object-cover ring-2 ring-[var(--accent-primary)]/20 shadow-xl" alt={club.name} />
-                      <div className="flex-1 space-y-2">
-                        <div className="flex justify-between items-start">
-                          <h3 className="text-2xl font-bold group-hover:text-[var(--accent-primary)] transition-colors">{club.name}</h3>
-                          <button 
-                            onClick={(e) => toggleJoinClub(e, club.id)}
-                            className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${
-                              isJoined 
-                                ? 'bg-[var(--accent-primary)] border-[var(--accent-primary)] text-[var(--bg-color)]' 
-                                : 'bg-transparent border-[var(--border-color)] text-[var(--text-main)]/40 hover:text-white hover:border-white/20'
-                            }`}
-                          >
-                            {isJoined ? 'JOINED' : 'JOIN CLUB'}
-                          </button>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="text-[10px] font-black uppercase tracking-widest opacity-40">{club.memberCount + (isJoined && club.creatorId !== 'user_1' ? 1 : 0)} MEMBERS</span>
-                        </div>
-                        <p className="text-sm opacity-60 leading-relaxed line-clamp-2">{club.description}</p>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
         )}
 
         {activeTab === 'runs' && (
@@ -302,39 +277,44 @@ const App: React.FC = () => {
             </div>
             
             <div className="space-y-6">
-              {runs.map(run => (
-                <div key={run.id} className="group bg-[var(--card-bg)] rounded-[3rem] p-8 border border-[var(--border-color)] hover:border-[var(--accent-primary)]/40 transition-all card-shadow">
-                  <div className="flex justify-between items-start mb-8">
-                    <div className="space-y-1">
-                      <span className="text-[10px] font-black uppercase tracking-[0.3em] text-[var(--accent-primary)]">Roast Summary</span>
-                      <h4 className="text-3xl font-bold text-[var(--text-main)] tracking-tight leading-none">{run.routeName}</h4>
-                      <div className="text-xs font-medium opacity-40 uppercase tracking-widest pt-1">{new Date(run.date).toLocaleDateString()}</div>
+              {runs.map(run => {
+                const distInfo = formatDistance(run.distance, unitSystem);
+                const paceInfo = formatPace(run.averagePace, unitSystem);
+                return (
+                  <div key={run.id} className="group bg-[var(--card-bg)] rounded-[3rem] p-8 border border-[var(--border-color)] hover:border-[var(--accent-primary)]/40 transition-all card-shadow">
+                    <div className="flex justify-between items-start mb-8">
+                      <div className="space-y-1">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-[var(--accent-primary)]">Roast Summary</span>
+                        <h4 className="text-3xl font-bold text-[var(--text-main)] tracking-tight leading-none">{run.routeName}</h4>
+                        <div className="text-xs font-medium opacity-40 uppercase tracking-widest pt-1">{new Date(run.date).toLocaleDateString()}</div>
+                      </div>
+                      <div className="text-right flex flex-col items-end gap-2">
+                        <div className="text-5xl font-display text-[var(--text-main)] leading-none">{distInfo.value}</div>
+                        <div className="text-[10px] font-black opacity-30">{distInfo.unit}</div>
+                      </div>
                     </div>
-                    <div className="text-right flex flex-col items-end gap-2">
-                      <div className="text-5xl font-display text-[var(--text-main)] leading-none">{run.distance.toFixed(2)}</div>
-                      {!run.reviewId && (
-                        <button 
-                          onClick={() => handleManualReview(run)}
-                          className="text-[9px] font-black uppercase tracking-widest bg-amber-400 text-black px-3 py-1 rounded-full animate-pulse"
-                        >
-                          LEAVE REVIEW
-                        </button>
-                      )}
+                    
+                    <div className="grid grid-cols-2 gap-4 mb-8">
+                      <div className="bg-[var(--bg-color)]/60 p-6 rounded-[2rem] border border-white/5 flex flex-col items-center">
+                        <span className="text-[9px] uppercase font-black tracking-[0.2em] opacity-30 mb-2">Duration</span>
+                        <span className="text-2xl font-display">{Math.floor(run.duration / 60)}:{(run.duration % 60).toString().padStart(2, '0')}</span>
+                      </div>
+                      <div className="bg-[var(--bg-color)]/60 p-6 rounded-[2rem] border border-white/5 flex flex-col items-center">
+                        <span className="text-[9px] uppercase font-black tracking-[0.2em] opacity-30 mb-2">Pace ({getPaceUnit(unitSystem)})</span>
+                        <span className="text-2xl font-display text-[var(--accent-secondary)]">{paceInfo}</span>
+                      </div>
                     </div>
+                    {!run.reviewId && (
+                      <button 
+                        onClick={() => handleManualReview(run)}
+                        className="w-full text-[10px] font-black uppercase tracking-widest bg-amber-400 text-black py-4 rounded-2xl active:scale-95 transition-all"
+                      >
+                        LEAVE REVIEW
+                      </button>
+                    )}
                   </div>
-                  
-                  <div className="grid grid-cols-2 gap-4 mb-8">
-                    <div className="bg-[var(--bg-color)]/60 p-6 rounded-[2rem] border border-white/5 flex flex-col items-center">
-                      <span className="text-[9px] uppercase font-black tracking-[0.2em] opacity-30 mb-2">Duration</span>
-                      <span className="text-2xl font-display">{Math.floor(run.duration / 60)}:{(run.duration % 60).toString().padStart(2, '0')}</span>
-                    </div>
-                    <div className="bg-[var(--bg-color)]/60 p-6 rounded-[2rem] border border-white/5 flex flex-col items-center">
-                      <span className="text-[9px] uppercase font-black tracking-[0.2em] opacity-30 mb-2">Pace</span>
-                      <span className="text-2xl font-display text-[var(--accent-secondary)]">{run.averagePace}</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -362,18 +342,40 @@ const App: React.FC = () => {
 
             <div className="grid grid-cols-3 gap-6">
               <div className="bg-[var(--card-bg)] p-8 rounded-[3rem] text-center border border-[var(--border-color)] card-shadow">
-                <div className="text-4xl font-display mb-1 text-[var(--accent-primary)]">{profile.stats.totalDistance.toFixed(0)}</div>
-                <div className="text-[9px] font-black uppercase tracking-[0.3em] opacity-30">KM TOTAL</div>
+                <div className="text-3xl font-display mb-1 text-[var(--accent-primary)]">
+                  {formatDistance(profile.stats.totalDistance, unitSystem).value}
+                </div>
+                <div className="text-[9px] font-black uppercase tracking-[0.3em] opacity-30">{formatDistance(0, unitSystem).unit} TOTAL</div>
               </div>
               <div className="bg-[var(--card-bg)] p-8 rounded-[3rem] text-center border border-[var(--border-color)] card-shadow">
-                <div className="text-4xl font-display mb-1 text-[var(--accent-secondary)]">{profile.stats.totalRuns}</div>
+                <div className="text-3xl font-display mb-1 text-[var(--accent-secondary)]">{profile.stats.totalRuns}</div>
                 <div className="text-[9px] font-black uppercase tracking-[0.3em] opacity-30">SESSIONS</div>
               </div>
               <div className="bg-[var(--card-bg)] p-8 rounded-[3rem] text-center border border-[var(--border-color)] card-shadow">
-                <div className="text-4xl font-display mb-1 text-orange-500">{profile.stats.avgPace}</div>
-                <div className="text-[9px] font-black uppercase tracking-[0.3em] opacity-30">AVG PACE</div>
+                <div className="text-3xl font-display mb-1 text-orange-500">
+                  {formatPace(profile.stats.avgPace, unitSystem)}
+                </div>
+                <div className="text-[9px] font-black uppercase tracking-[0.3em] opacity-30">AVG {formatPace('0:00', unitSystem).includes(':') ? formatPace('0:00', unitSystem).split(' ')[1] : ''} PACE</div>
               </div>
             </div>
+
+            <section className="space-y-8">
+              <h3 className="text-xs font-black uppercase tracking-[0.4em] opacity-30 text-center">Unit Preference</h3>
+              <div className="flex gap-4 p-2 glass rounded-[2.5rem] bg-white/5 border border-white/10">
+                <button 
+                  onClick={() => handleUnitSystemChange('metric')}
+                  className={`flex-1 py-6 rounded-[2rem] text-xs font-black tracking-widest uppercase transition-all ${unitSystem === 'metric' ? 'bg-[var(--accent-primary)] text-[var(--bg-color)] shadow-xl' : 'text-white/40'}`}
+                >
+                  METRIC (KM/M)
+                </button>
+                <button 
+                  onClick={() => handleUnitSystemChange('imperial')}
+                  className={`flex-1 py-6 rounded-[2rem] text-xs font-black tracking-widest uppercase transition-all ${unitSystem === 'imperial' ? 'bg-[var(--accent-primary)] text-[var(--bg-color)] shadow-xl' : 'text-white/40'}`}
+                >
+                  IMPERIAL (MI/FT)
+                </button>
+              </div>
+            </section>
 
             <section className="space-y-8">
               <h3 className="text-xs font-black uppercase tracking-[0.4em] opacity-30 text-center">Interface Profile</h3>
@@ -403,7 +405,11 @@ const App: React.FC = () => {
       {selectedRoute && (
         <RouteDetail 
           route={selectedRoute} 
-          onClose={() => setSelectedRoute(null)} 
+          unitSystem={unitSystem}
+          onClose={() => {
+            setSelectedRoute(null);
+            checkOfflineRoutes();
+          }} 
           onStart={(r) => {
             setSelectedRoute(null);
             setTrackingRoute(r);
@@ -413,11 +419,17 @@ const App: React.FC = () => {
       )}
 
       {trackingRoute && (
-        <LiveTracking route={trackingRoute} onFinish={handleFinishRun} onCancel={() => setTrackingRoute(null)} />
+        <LiveTracking 
+          route={trackingRoute} 
+          unitSystem={unitSystem}
+          onFinish={handleFinishRun} 
+          onCancel={() => setTrackingRoute(null)} 
+        />
       )}
 
       {(activeTab === 'create' || editingRoute) && (
         <RouteCreator 
+          unitSystem={unitSystem}
           onSave={handleSaveRoute}
           onCancel={() => {
             setActiveTab('explore');

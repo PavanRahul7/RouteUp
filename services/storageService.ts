@@ -6,17 +6,18 @@ const KEYS = {
   PROFILE: 'velocity_profile',
   CLUBS: 'velocity_clubs',
   REVIEWS: 'velocity_reviews',
-  USERS: 'velocity_all_users', // For simulated discovery
+  USERS: 'velocity_all_users',
 };
 
 const INITIAL_PROFILE: UserProfile = {
   id: 'user_1',
   username: 'New Roaster',
-  avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400&h=400&fit=crop',
+  avatar: 'https://img.freepik.com/free-vector/cute-coffee-cup-running-cartoon-vector-icon-illustration-food-drink-icon-concept-isolated-flat_138676-4318.jpg?w=740',
   bio: 'Just starting my journey. Every run deserves a destination.',
   joinedClubIds: [],
-  friendIds: ['u_2', 'u_3'], // Start with some friends
+  friendIds: ['u_2', 'u_3'],
   isSetup: false,
+  unitSystem: 'metric',
   stats: {
     totalDistance: 0,
     totalRuns: 0,
@@ -28,31 +29,34 @@ const DISCOVERY_USERS: UserProfile[] = [
   {
     id: 'u_2',
     username: 'EspressoEnthusiast',
-    avatar: 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=200&h=200&fit=crop',
+    avatar: 'https://img.freepik.com/free-vector/hand-drawn-retro-cartoon-coffee-character_23-2150682896.jpg?w=740',
     bio: 'Pacing for the perfect crema.',
     joinedClubIds: ['c1'],
     friendIds: [],
     isSetup: true,
+    unitSystem: 'metric',
     stats: { totalDistance: 142, totalRuns: 28, avgPace: '5:12' }
   },
   {
     id: 'u_3',
     username: 'MokaPotMaster',
-    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop',
+    avatar: 'https://img.freepik.com/free-vector/hand-drawn-retro-cartoon-coffee-bean-illustration_23-2150682898.jpg?w=740',
     bio: 'Vertical gains and dark roasts.',
     joinedClubIds: ['c1'],
     friendIds: [],
     isSetup: true,
+    unitSystem: 'metric',
     stats: { totalDistance: 89, totalRuns: 15, avgPace: '6:05' }
   },
   {
     id: 'u_4',
     username: 'LatteLady',
-    avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200&h=200&fit=crop',
+    avatar: 'https://img.freepik.com/free-vector/hand-drawn-retro-cartoon-cup-coffee-illustration_23-2150682894.jpg?w=740',
     bio: 'Slow runs, high-quality beans.',
     joinedClubIds: [],
     friendIds: [],
     isSetup: true,
+    unitSystem: 'metric',
     stats: { totalDistance: 210, totalRuns: 42, avgPace: '5:45' }
   }
 ];
@@ -84,6 +88,8 @@ export const storageService = {
     const profile = storageService.getProfile();
     profile.stats.totalDistance += run.distance;
     profile.stats.totalRuns += 1;
+    // Simple average update for demo
+    profile.stats.avgPace = run.averagePace; 
     storageService.saveProfile(profile);
   },
   updateRun: (updatedRun: RunHistory) => {
@@ -97,6 +103,7 @@ export const storageService = {
     if (!stored.joinedClubIds) stored.joinedClubIds = [];
     if (!stored.friendIds) stored.friendIds = INITIAL_PROFILE.friendIds;
     if (!stored.theme) stored.theme = 'barista';
+    if (!stored.unitSystem) stored.unitSystem = 'metric';
     if (stored.isSetup === undefined) stored.isSetup = false;
     return stored;
   },

@@ -1,7 +1,7 @@
-
 import React, { useState, useEffect, useRef } from 'react';
-import { LatLng, Route, Difficulty } from '../types';
+import { LatLng, Route, Difficulty, UnitSystem } from '../types';
 import { geminiService } from '../services/geminiService';
+import { formatDistance, formatElevation } from '../services/unitUtils';
 
 declare var L: any;
 
@@ -12,16 +12,17 @@ interface RouteSegment {
 }
 
 interface RouteCreatorProps {
+  unitSystem: UnitSystem;
   onSave: (route: Route) => void;
   onCancel: () => void;
   initialRoute?: Route;
 }
 
-const RouteCreator: React.FC<RouteCreatorProps> = ({ onSave, onCancel, initialRoute }) => {
+const RouteCreator: React.FC<RouteCreatorProps> = ({ unitSystem, onSave, onCancel, initialRoute }) => {
   const [segments, setSegments] = useState<RouteSegment[]>([]);
   const allPoints = segments.reduce((acc, seg) => [...acc, ...seg.pathPoints], [] as LatLng[]);
   
-  const [distance, setDistance] = useState(initialRoute?.distance || 0);
+  const [distance, setDistance] = useState(initialRoute?.distance || 0); // stored in km
   const [name, setName] = useState(initialRoute?.name || '');
   const [description, setDescription] = useState(initialRoute?.description || '');
   const [difficulty, setDifficulty] = useState<Difficulty>(initialRoute?.difficulty || Difficulty.EASY);
@@ -90,7 +91,6 @@ const RouteCreator: React.FC<RouteCreatorProps> = ({ onSave, onCancel, initialRo
           mapInstance.current.fitBounds(polylineRef.current.getBounds(), { padding: [50, 50] });
           calculateDistance(initialRoute.path);
         } else {
-          // Automatic detection on load for new routes
           handleDetectLocation();
         }
 
@@ -120,7 +120,6 @@ const RouteCreator: React.FC<RouteCreatorProps> = ({ onSave, onCancel, initialRo
         if (mapInstance.current) {
           mapInstance.current.setView([latitude, longitude], 15, { animate: true });
         }
-        // AI detected region name
         const region = await geminiService.reverseGeocode(latitude, longitude);
         setDetectedRegion(region);
         setIsLocating(false);
@@ -304,12 +303,14 @@ const RouteCreator: React.FC<RouteCreatorProps> = ({ onSave, onCancel, initialRo
     setIsSaving(false);
   };
 
+  const distInfo = formatDistance(distance, unitSystem);
+  const elevInfo = formatElevation(distance * 15, unitSystem);
+
   return (
     <div className="fixed inset-0 z-[110] bg-[var(--bg-color)] flex flex-col overflow-hidden animate-in fade-in transition-colors duration-500">
       <div className="relative flex-1 bg-slate-900">
         <div ref={mapRef} className="w-full h-full" />
         
-        {/* Context Menu */}
         {contextMenu && (
           <div 
             className="absolute z-[2000] bg-white rounded-[1.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150 py-2 border border-black/5"
@@ -328,7 +329,6 @@ const RouteCreator: React.FC<RouteCreatorProps> = ({ onSave, onCancel, initialRo
           </div>
         )}
 
-        {/* HUD Overlay - Top */}
         <div className="absolute top-12 left-8 right-8 z-[1000] flex flex-col gap-4">
           <div className="flex gap-3">
             <button onClick={onCancel} className="glass p-5 rounded-3xl text-[var(--text-main)] shadow-2xl active:scale-90 transition-all shrink-0">
@@ -344,16 +344,6 @@ const RouteCreator: React.FC<RouteCreatorProps> = ({ onSave, onCancel, initialRo
               <svg className="absolute left-6 top-1/2 -translate-y-1/2 h-5 w-5 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
               {isSearching && <div className="absolute right-6 top-1/2 -translate-y-1/2 animate-spin h-5 w-5 border-2 border-[var(--accent-primary)] border-t-transparent rounded-full"></div>}
             </form>
-            <button 
-              type="button"
-              onClick={handleDetectLocation}
-              className={`glass p-5 rounded-3xl shadow-2xl active:scale-90 transition-all shrink-0 ${isLocating ? 'text-[var(--accent-primary)] animate-pulse' : 'text-white/40 hover:text-white'}`}
-            >
-              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-            </button>
           </div>
 
           <div className="flex flex-col gap-2">
@@ -369,7 +359,6 @@ const RouteCreator: React.FC<RouteCreatorProps> = ({ onSave, onCancel, initialRo
           </div>
         </div>
 
-        {/* Sidebar Controls */}
         <div className="absolute top-64 right-8 flex flex-col gap-4 z-[1000]">
            <button onClick={() => handleUndo()} disabled={segments.length === 0} className="glass p-5 rounded-3xl text-white shadow-2xl disabled:opacity-20 active:scale-95 transition-all">
              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>
@@ -379,17 +368,16 @@ const RouteCreator: React.FC<RouteCreatorProps> = ({ onSave, onCancel, initialRo
            </button>
         </div>
 
-        {/* Footer Dashboard */}
         <div className="absolute bottom-12 left-8 right-8 z-[1000] glass p-10 rounded-[3.5rem] shadow-2xl">
           <div className="flex flex-col sm:flex-row justify-between items-center gap-6">
             <div className="flex gap-16">
               <div className="space-y-1">
                 <span className="text-[10px] font-black uppercase tracking-[0.4em] opacity-30 font-display">Distance</span>
-                <div className="text-5xl font-display text-white">{distance.toFixed(2)} <span className="text-sm opacity-20">km</span></div>
+                <div className="text-5xl font-display text-white">{distInfo.value} <span className="text-sm opacity-20">{distInfo.unit}</span></div>
               </div>
               <div className="space-y-1">
                 <span className="text-[10px] font-black uppercase tracking-[0.4em] opacity-30 font-display">Climb</span>
-                <div className="text-5xl font-display text-[var(--accent-secondary)]">+{Math.round(distance * 15)} <span className="text-sm opacity-20">m</span></div>
+                <div className="text-5xl font-display text-[var(--accent-secondary)]">+{elevInfo.value} <span className="text-sm opacity-20">{elevInfo.unit}</span></div>
               </div>
             </div>
             <button 

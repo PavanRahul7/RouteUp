@@ -1,27 +1,52 @@
+
 import React, { useEffect, useRef, useState } from 'react';
-import { Route, Difficulty, Review } from '../types';
+import { Route, Difficulty, Review, UnitSystem } from '../types';
 import { AreaChart, Area, ResponsiveContainer, Tooltip } from 'recharts';
 import { storageService } from '../services/storageService';
+import { offlineService } from '../services/offlineService';
+import { formatDistance, formatElevation } from '../services/unitUtils';
 
 declare var L: any;
 
 interface RouteDetailProps {
   route: Route;
+  unitSystem: UnitSystem;
   onClose: () => void;
   onStart: (route: Route) => void;
   onEdit: (route: Route) => void;
 }
 
-const RouteDetail: React.FC<RouteDetailProps> = ({ route, onClose, onStart, onEdit }) => {
+const RouteDetail: React.FC<RouteDetailProps> = ({ route, unitSystem, onClose, onStart, onEdit }) => {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<any>(null);
   const [mapReady, setMapReady] = useState(false);
   const [reviews, setReviews] = useState<Review[]>([]);
+  const [isDownloaded, setIsDownloaded] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
 
   useEffect(() => {
     const allReviews = storageService.getReviews();
     setReviews(allReviews.filter(r => r.routeId === route.id));
+    checkOfflineStatus();
   }, [route.id]);
+
+  const checkOfflineStatus = async () => {
+    const status = await offlineService.isRouteOffline(route.id);
+    setIsDownloaded(status);
+  };
+
+  const handleDownload = async () => {
+    if (isDownloaded || downloadProgress !== null) return;
+    setDownloadProgress(0);
+    try {
+      await offlineService.downloadRouteResources(route, (p) => setDownloadProgress(p));
+      setIsDownloaded(true);
+    } catch (e) {
+      console.error("Download failed", e);
+    } finally {
+      setDownloadProgress(null);
+    }
+  };
 
   useEffect(() => {
     let timeout: number;
@@ -42,7 +67,31 @@ const RouteDetail: React.FC<RouteDetailProps> = ({ route, onClose, onStart, onEd
           fadeAnimation: true
         }).setView([route.path[0].lat, route.path[0].lng], 14);
 
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(mapInstance.current);
+        // Custom Offline Tile Layer
+        const OfflineLayer = L.TileLayer.extend({
+          createTile: function(coords: any, done: any) {
+            const tile = document.createElement('img');
+            const key = `${coords.z}/${coords.x}/${coords.y}`;
+            
+            offlineService.getTile(key).then(blob => {
+              if (blob) {
+                const url = URL.createObjectURL(blob);
+                tile.src = url;
+                tile.onload = () => {
+                  URL.revokeObjectURL(url);
+                  done(null, tile);
+                };
+              } else {
+                tile.src = this.getTileUrl(coords);
+                tile.onload = () => done(null, tile);
+                tile.onerror = () => done(new Error('Tile load error'), tile);
+              }
+            });
+            return tile;
+          }
+        });
+
+        new OfflineLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(mapInstance.current);
 
         const poly = L.polyline(route.path, {
           color: '#3b82f6',
@@ -78,6 +127,9 @@ const RouteDetail: React.FC<RouteDetailProps> = ({ route, onClose, onStart, onEd
     elev: 10 + Math.random() * route.elevationGain
   }));
 
+  const distInfo = formatDistance(route.distance, unitSystem);
+  const elevInfo = formatElevation(route.elevationGain, unitSystem);
+
   return (
     <div className="fixed inset-0 z-[100] bg-[var(--bg-color)] flex flex-col md:max-w-2xl md:mx-auto animate-in slide-in-from-right duration-500 overflow-hidden">
       <div className="relative h-[45vh] shrink-0">
@@ -91,6 +143,30 @@ const RouteDetail: React.FC<RouteDetailProps> = ({ route, onClose, onStart, onEd
           <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15 19l-7-7 7-7" />
           </svg>
+        </button>
+
+        <button 
+          onClick={handleDownload}
+          disabled={isDownloaded || downloadProgress !== null}
+          className={`absolute top-8 right-8 glass p-4 rounded-2xl z-20 transition-all active:scale-95 ${isDownloaded ? 'text-emerald-400' : 'text-white'}`}
+        >
+          {downloadProgress !== null ? (
+            <div className="relative w-6 h-6 flex items-center justify-center">
+              <svg className="animate-spin h-6 w-6 text-[var(--accent-primary)]" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <span className="absolute text-[8px] font-black">{downloadProgress}%</span>
+            </div>
+          ) : isDownloaded ? (
+            <svg className="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
+               <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+            </svg>
+          ) : (
+            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+          )}
         </button>
 
         {!mapReady && (
@@ -134,11 +210,11 @@ const RouteDetail: React.FC<RouteDetailProps> = ({ route, onClose, onStart, onEd
         <div className="grid grid-cols-2 gap-4">
           <div className="bg-[var(--card-bg)] p-8 rounded-[2.5rem] border border-[var(--border-color)] group hover:border-[var(--accent-primary)]/30 transition-all">
             <span className="text-[10px] uppercase font-bold tracking-[0.3em] opacity-40 block mb-2">Distance</span>
-            <div className="text-4xl font-display text-[var(--text-main)]">{route.distance.toFixed(2)} <span className="text-sm opacity-30">KM</span></div>
+            <div className="text-4xl font-display text-[var(--text-main)]">{distInfo.value} <span className="text-sm opacity-30">{distInfo.unit}</span></div>
           </div>
           <div className="bg-[var(--card-bg)] p-8 rounded-[2.5rem] border border-[var(--border-color)] group hover:border-[var(--accent-secondary)]/30 transition-all">
             <span className="text-[10px] uppercase font-bold tracking-[0.3em] opacity-40 block mb-2">Elevation</span>
-            <div className="text-4xl font-display text-[var(--accent-secondary)]">+{route.elevationGain} <span className="text-sm opacity-30">M</span></div>
+            <div className="text-4xl font-display text-[var(--accent-secondary)]">+{elevInfo.value} <span className="text-sm opacity-30">{elevInfo.unit}</span></div>
           </div>
         </div>
 
@@ -166,7 +242,6 @@ const RouteDetail: React.FC<RouteDetailProps> = ({ route, onClose, onStart, onEd
           </div>
         </div>
 
-        {/* Reviews Section */}
         <div className="space-y-8">
            <div className="flex justify-between items-end px-1">
              <h3 className="text-xs font-bold uppercase tracking-[0.4em] opacity-40 font-coffee">The Daily Grind (Reviews)</h3>

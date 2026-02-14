@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { UserProfile } from '../types';
 import { storageService } from '../services/storageService';
+import { formatDistance, formatPace, getPaceUnit } from '../services/unitUtils';
 
 interface FriendsListProps {
   currentUser: UserProfile;
@@ -27,6 +28,7 @@ const FriendsList: React.FC<FriendsListProps> = ({ currentUser, onUpdate }) => {
   );
 
   const friends = allUsers.filter(u => currentUser.friendIds.includes(u.id));
+  const unitSystem = currentUser.unitSystem || 'metric';
 
   return (
     <div className="space-y-12 pb-20 fade-slide-up">
@@ -50,25 +52,29 @@ const FriendsList: React.FC<FriendsListProps> = ({ currentUser, onUpdate }) => {
             <span className="text-[10px] font-bold opacity-30 uppercase tracking-widest">{friends.length} FOLLOWING</span>
           </div>
           <div className="grid grid-cols-1 gap-4">
-            {friends.map(friend => (
-              <div key={friend.id} className="bg-[var(--card-bg)] rounded-[2.5rem] p-6 border border-[var(--border-color)] flex items-center gap-6 group hover:border-[var(--accent-primary)]/30 transition-all card-shadow">
-                <img src={friend.avatar} className="w-16 h-16 rounded-2xl object-cover ring-2 ring-[var(--accent-primary)]/10" alt={friend.username} />
-                <div className="flex-1">
-                  <h3 className="text-lg font-bold group-hover:text-[var(--accent-primary)] transition-colors">{friend.username}</h3>
-                  <p className="text-xs opacity-40 italic">"{friend.bio}"</p>
-                  <div className="flex gap-4 mt-2">
-                    <span className="text-[9px] font-black uppercase tracking-widest opacity-30">{friend.stats.totalDistance} KM</span>
-                    <span className="text-[9px] font-black uppercase tracking-widest opacity-30">{friend.stats.avgPace} PACE</span>
+            {friends.map(friend => {
+              const distInfo = formatDistance(friend.stats.totalDistance, unitSystem);
+              const paceInfo = formatPace(friend.stats.avgPace, unitSystem);
+              return (
+                <div key={friend.id} className="bg-[var(--card-bg)] rounded-[2.5rem] p-6 border border-[var(--border-color)] flex items-center gap-6 group hover:border-[var(--accent-primary)]/30 transition-all card-shadow">
+                  <img src={friend.avatar} className="w-16 h-16 rounded-2xl object-cover ring-2 ring-[var(--accent-primary)]/10" alt={friend.username} />
+                  <div className="flex-1">
+                    <h3 className="text-lg font-bold group-hover:text-[var(--accent-primary)] transition-colors">{friend.username}</h3>
+                    <p className="text-xs opacity-40 italic">"{friend.bio}"</p>
+                    <div className="flex gap-4 mt-2">
+                      <span className="text-[9px] font-black uppercase tracking-widest opacity-30">{distInfo.value} {distInfo.unit}</span>
+                      <span className="text-[9px] font-black uppercase tracking-widest opacity-30">{paceInfo} {getPaceUnit(unitSystem)}</span>
+                    </div>
                   </div>
+                  <button 
+                    onClick={() => handleToggleFollow(friend.id)}
+                    className="bg-red-500/10 text-red-500 text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-xl hover:bg-red-500 hover:text-white transition-all"
+                  >
+                    Unfollow
+                  </button>
                 </div>
-                <button 
-                  onClick={() => handleToggleFollow(friend.id)}
-                  className="bg-red-500/10 text-red-500 text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-xl hover:bg-red-500 hover:text-white transition-all"
-                >
-                  Unfollow
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
       )}

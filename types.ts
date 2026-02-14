@@ -10,6 +10,7 @@ export enum Difficulty {
 }
 
 export type ThemeType = 'stealth' | 'solar' | 'neon' | 'forest' | 'barista';
+export type UnitSystem = 'metric' | 'imperial';
 
 export interface Review {
   id: string;
@@ -28,8 +29,8 @@ export interface Route {
   creatorId: string;
   creatorName: string;
   path: LatLng[];
-  distance: number; // in km
-  elevationGain: number; // in meters
+  distance: number; // always stored in km
+  elevationGain: number; // always stored in meters
   difficulty: Difficulty;
   tags: string[];
   createdAt: number;
@@ -55,7 +56,7 @@ export interface RunHistory {
   date: number;
   duration: number; // seconds
   distance: number; // km
-  averagePace: string; // min/km
+  averagePace: string; // min/km string
   actualPath: LatLng[];
   coachingTips?: string;
   reviewId?: string;
@@ -67,13 +68,14 @@ export interface UserProfile {
   avatar: string;
   bio: string;
   theme?: ThemeType;
+  unitSystem?: UnitSystem;
   joinedClubIds: string[];
   friendIds: string[];
   isSetup: boolean;
   stats: {
-    totalDistance: number;
+    totalDistance: number; // always stored in km
     totalRuns: number;
-    avgPace: string;
+    avgPace: string; // always stored in min/km
   };
 }
 

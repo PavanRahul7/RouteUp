@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { AppTab, Route, RunHistory, UserProfile, Difficulty, ThemeType, RunClub } from './types';
+import { AppTab, Route, RunHistory, UserProfile, Difficulty, ThemeType, RunClub, Review } from './types';
 import { storageService } from './services/storageService';
 import BottomNav from './components/BottomNav';
 import RouteDetail from './components/RouteDetail';
 import LiveTracking from './components/LiveTracking';
 import RouteCreator from './components/RouteCreator';
 import ClubCreator from './components/ClubCreator';
+import ReviewModal from './components/ReviewModal';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<AppTab>('explore');
@@ -17,6 +18,7 @@ const App: React.FC = () => {
   const [trackingRoute, setTrackingRoute] = useState<Route | null>(null);
   const [editingRoute, setEditingRoute] = useState<Route | null>(null);
   const [isAddingClub, setIsAddingClub] = useState(false);
+  const [pendingReviewRoute, setPendingReviewRoute] = useState<Route | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [theme, setTheme] = useState<ThemeType>('barista');
 
@@ -42,9 +44,15 @@ const App: React.FC = () => {
 
   const handleFinishRun = (run: RunHistory) => {
     setRuns([run, ...runs]);
+    const route = routes.find(r => r.id === run.routeId);
     setTrackingRoute(null);
     setActiveTab('runs');
     setProfile(storageService.getProfile());
+    
+    // Trigger review modal after a short delay
+    if (route) {
+      setTimeout(() => setPendingReviewRoute(route), 1000);
+    }
   };
 
   const handleSaveRoute = (route: Route) => {
@@ -67,7 +75,6 @@ const App: React.FC = () => {
   const handleSaveClub = (club: RunClub) => {
     storageService.saveClub(club);
     setClubs([club, ...clubs]);
-    // Auto join created club
     const updatedProfile = storageService.toggleClubMembership(club.id);
     setProfile(updatedProfile);
     setIsAddingClub(false);
@@ -77,6 +84,12 @@ const App: React.FC = () => {
     e.stopPropagation();
     const updatedProfile = storageService.toggleClubMembership(clubId);
     setProfile(updatedProfile);
+  };
+
+  const handleReviewSubmitted = (review: Review) => {
+    setPendingReviewRoute(null);
+    // Refresh routes to show updated average rating
+    setRoutes(storageService.getRoutes());
   };
 
   const handleThemeChange = (newTheme: ThemeType) => {
@@ -103,7 +116,6 @@ const App: React.FC = () => {
 
   return (
     <div className="h-screen w-full flex flex-col overflow-hidden transition-all duration-500">
-      {/* Dynamic Header */}
       <header className="px-8 pt-12 pb-8 flex justify-between items-end z-40 bg-gradient-to-b from-[var(--bg-color)] to-transparent shrink-0">
         <div className="space-y-1">
           <span className="text-[10px] font-bold tracking-[0.4em] uppercase opacity-30 ml-0.5">Every run deserves a destination</span>
@@ -126,11 +138,9 @@ const App: React.FC = () => {
         )}
       </header>
 
-      {/* Viewport */}
       <main className="flex-1 overflow-y-auto px-8 pb-40">
         {activeTab === 'explore' && (
           <div className="space-y-10 fade-slide-up">
-            {/* Search Bar Refined */}
             <div className="relative group">
               <div className="absolute inset-0 bg-[var(--accent-primary)]/5 rounded-3xl blur-xl opacity-0 group-focus-within:opacity-100 transition-opacity" />
               <input 
@@ -145,7 +155,6 @@ const App: React.FC = () => {
               </svg>
             </div>
 
-            {/* Featured Section */}
             {!searchQuery && (
               <section className="space-y-6">
                 <div className="flex justify-between items-end px-1">
@@ -171,7 +180,6 @@ const App: React.FC = () => {
               </section>
             )}
 
-            {/* List */}
             <section className="space-y-8">
               <div className="flex justify-between items-end px-1">
                 <h2 className="text-xs font-black uppercase tracking-[0.3em] opacity-40 font-coffee">Daily Brews</h2>
@@ -396,7 +404,6 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            {/* Joined Clubs List */}
             {profile.joinedClubIds.length > 0 && (
               <section className="space-y-6">
                 <h3 className="text-xs font-black uppercase tracking-[0.4em] opacity-30">Your Circles</h3>
@@ -424,7 +431,6 @@ const App: React.FC = () => {
               </section>
             )}
 
-            {/* Customization Grid */}
             <section className="space-y-8">
               <div className="px-1 space-y-1">
                 <h3 className="text-xs font-black uppercase tracking-[0.4em] opacity-30">Roast Profile</h3>
@@ -458,7 +464,6 @@ const App: React.FC = () => {
         )}
       </main>
 
-      {/* Primary Action Button */}
       {activeTab === 'explore' && !editingRoute && (
         <button 
           onClick={() => setActiveTab('create')}
@@ -471,10 +476,8 @@ const App: React.FC = () => {
         </button>
       )}
 
-      {/* Navigation */}
       <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
 
-      {/* Fullscreen Overlays */}
       {selectedRoute && (
         <RouteDetail 
           route={selectedRoute} 
@@ -511,6 +514,15 @@ const App: React.FC = () => {
           routes={routes}
           onSave={handleSaveClub}
           onCancel={() => setIsAddingClub(false)}
+        />
+      )}
+
+      {pendingReviewRoute && profile && (
+        <ReviewModal
+          route={pendingReviewRoute}
+          profile={profile}
+          onSubmitted={handleReviewSubmitted}
+          onSkip={() => setPendingReviewRoute(null)}
         />
       )}
     </div>

@@ -1,10 +1,11 @@
-import { Route, RunHistory, UserProfile, Difficulty, RunClub } from '../types';
+import { Route, RunHistory, UserProfile, Difficulty, RunClub, Review } from '../types';
 
 const KEYS = {
   ROUTES: 'velocity_routes',
   RUNS: 'velocity_runs',
   PROFILE: 'velocity_profile',
   CLUBS: 'velocity_clubs',
+  REVIEWS: 'velocity_reviews',
 };
 
 const INITIAL_PROFILE: UserProfile = {
@@ -134,7 +135,6 @@ export const storageService = {
   getProfile: (): UserProfile => {
     const data = localStorage.getItem(KEYS.PROFILE);
     const stored = data ? JSON.parse(data) : INITIAL_PROFILE;
-    // Migration for joinedClubIds
     if (!stored.joinedClubIds) stored.joinedClubIds = [];
     if (!stored.theme) stored.theme = 'barista';
     return stored;
@@ -161,5 +161,25 @@ export const storageService = {
     }
     storageService.saveProfile(profile);
     return profile;
+  },
+  getReviews: (): Review[] => {
+    const data = localStorage.getItem(KEYS.REVIEWS);
+    return data ? JSON.parse(data) : [];
+  },
+  saveReview: (review: Review) => {
+    const reviews = storageService.getReviews();
+    const updated = [review, ...reviews];
+    localStorage.setItem(KEYS.REVIEWS, JSON.stringify(updated));
+
+    // Update the route's average rating
+    const routeReviews = updated.filter(r => r.routeId === review.routeId);
+    const avgRating = routeReviews.reduce((acc, r) => acc + r.rating, 0) / routeReviews.length;
+    
+    const routes = storageService.getRoutes();
+    const targetRoute = routes.find(r => r.id === review.routeId);
+    if (targetRoute) {
+      targetRoute.rating = parseFloat(avgRating.toFixed(1));
+      storageService.updateRoute(targetRoute);
+    }
   }
 };

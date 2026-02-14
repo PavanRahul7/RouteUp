@@ -11,6 +11,16 @@ export enum Difficulty {
 
 export type ThemeType = 'stealth' | 'solar' | 'neon' | 'forest' | 'barista';
 
+export interface Review {
+  id: string;
+  routeId: string;
+  userId: string;
+  username: string;
+  rating: number; // 1-5
+  comment: string;
+  createdAt: number;
+}
+
 export interface Route {
   id: string;
   name: string;
@@ -23,7 +33,7 @@ export interface Route {
   difficulty: Difficulty;
   tags: string[];
   createdAt: number;
-  rating: number;
+  rating: number; // average rating
 }
 
 export interface RunClub {
@@ -48,6 +58,7 @@ export interface RunHistory {
   averagePace: string; // min/km
   actualPath: LatLng[];
   coachingTips?: string;
+  reviewId?: string;
 }
 
 export interface UserProfile {

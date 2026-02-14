@@ -131,7 +131,7 @@ const App: React.FC = () => {
         <div className="space-y-1">
           <span className="text-[10px] font-bold tracking-[0.2em] uppercase opacity-40 ml-0.5">Running from our problems toward caffeine</span>
           <h1 className="text-4xl sm:text-5xl font-display font-bold leading-none tracking-tight text-[var(--accent-primary)]">
-            COFFEE ROUTES<span className="text-[var(--text-main)] opacity-10">/</span>
+            THE COFFEE ROUTE<span className="text-[var(--text-main)] opacity-10">/</span>
           </h1>
         </div>
         

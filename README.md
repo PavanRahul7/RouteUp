@@ -1,8 +1,8 @@
-# ☕ Coffee Routes
+# ☕ The Coffee Route
 
 **Every run deserves a destination.**
 
-Coffee Routes is a social running app built for those who chase both personal bests and perfect roasts. Create routes, share hidden gem cafes with the community, and track your performance in real time. 
+The Coffee Route is a social running app built for those who chase both personal bests and perfect roasts. Create routes, share hidden gem cafes with the community, and track your performance in real time. 
 
 ---
 
@@ -14,7 +14,7 @@ Coffee Routes is a social running app built for those who chase both personal be
 
 **📍 Live Barista Tracking** — Select any route, hit Start, and track your progress toward your next caffeine hit in real time.
 
-**⚠️ Cold Brew Warning** — Deviate more than 50m from your path? Coffee Routes alerts you to get back on track before the cafe closes.
+**⚠️ Cold Brew Warning** — Deviate more than 50m from your path? The Coffee Route alerts you to get back on track before the cafe closes.
 
 **📊 Post-Run Roast** — Get a full breakdown of your performance with AI coaching tips that use a rich, full-bodied performance metaphor.
 

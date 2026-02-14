@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { Route, RunHistory, LatLng } from "../types";
 
@@ -76,7 +75,7 @@ export const geminiService = {
         Route: ${run.routeName}
         
         Provide a single paragraph of motivational coaching advice. 
-        Since this app is "Coffee Routes", mention a coffee-related reward or energy metaphor (e.g., "Full-bodied effort", "Rich performance").
+        Since this app is "The Coffee Route", mention a coffee-related reward or energy metaphor (e.g., "Full-bodied effort", "Rich performance").
         Keep it encouraging and brief.`
       });
       return response.text || "That was a full-bodied effort today! Reward yourself with a rich brew and focus on recovery.";

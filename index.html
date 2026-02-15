@@ -11,60 +11,16 @@
       @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Bebas+Neue&family=Space+Grotesk:wght@300..700&display=swap');
       
       :root {
-        --bg-color: #05070a;
-        --card-bg: rgba(18, 22, 28, 0.7);
-        --accent-primary: #3b82f6;
-        --accent-secondary: #10b981;
-        --text-main: #f8fafc;
-        --text-muted: #94a3b8;
-        --border-color: rgba(255, 255, 255, 0.08);
-        --glass-bg: rgba(10, 14, 20, 0.85);
+        --bg-color: #1a1210;
+        --card-bg: rgba(44, 24, 16, 0.7);
+        --accent-primary: #d4943a;
+        --accent-secondary: #f5e6d0;
+        --text-main: #f5e6d0;
+        --text-muted: #8b7355;
+        --border-color: rgba(212, 148, 58, 0.15);
+        --glass-bg: rgba(26, 18, 16, 0.92);
         --safe-top: env(safe-area-inset-top);
         --safe-bottom: env(safe-area-inset-bottom);
-      }
-
-      .theme-solar {
-        --bg-color: #f8fafc;
-        --card-bg: rgba(255, 255, 255, 0.9);
-        --accent-primary: #f97316;
-        --accent-secondary: #0f172a;
-        --text-main: #0f172a;
-        --text-muted: #64748b;
-        --border-color: rgba(0, 0, 0, 0.05);
-        --glass-bg: rgba(241, 245, 249, 0.9);
-      }
-
-      .theme-neon {
-        --bg-color: #000;
-        --card-bg: rgba(20, 20, 20, 0.6);
-        --accent-primary: #d946ef;
-        --accent-secondary: #22d3ee;
-        --text-main: #fff;
-        --text-muted: #a1a1aa;
-        --border-color: rgba(217, 70, 239, 0.15);
-        --glass-bg: rgba(0, 0, 0, 0.85);
-      }
-
-      .theme-forest {
-        --bg-color: #0a0f0b;
-        --card-bg: rgba(16, 24, 18, 0.7);
-        --accent-primary: #a3e635;
-        --accent-secondary: #fcd34d;
-        --text-main: #f7fee7;
-        --text-muted: #4d7c0f;
-        --border-color: rgba(163, 230, 53, 0.1);
-        --glass-bg: rgba(10, 15, 11, 0.9);
-      }
-
-      .theme-barista {
-        --bg-color: #1a0f0a;
-        --card-bg: rgba(44, 24, 16, 0.7);
-        --accent-primary: #d2b48c;
-        --accent-secondary: #fdf5e6;
-        --text-main: #fdf5e6;
-        --text-muted: #8b7355;
-        --border-color: rgba(210, 180, 140, 0.15);
-        --glass-bg: rgba(26, 15, 10, 0.92);
       }
 
       html, body, #root {
@@ -98,26 +54,16 @@
         border: 1px solid var(--border-color);
       }
 
-      .route-glow {
-        filter: drop-shadow(0 0 8px var(--accent-primary));
-      }
-
       .leaflet-container {
         background: var(--bg-color) !important;
-        filter: grayscale(0.1) contrast(1.1) brightness(0.9);
       }
 
-      /* Hide scrollbar but allow scrolling */
+      .route-outer {
+        filter: drop-shadow(0 0 4px #d4943a);
+      }
+
       ::-webkit-scrollbar { display: none; }
       * { -ms-overflow-style: none; scrollbar-width: none; }
-
-      .card-shadow {
-        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-      }
-
-      .btn-active:active {
-        transform: scale(0.95);
-      }
 
       @keyframes fadeSlideUp {
         from { opacity: 0; transform: translateY(30px) scale(0.98); }
@@ -126,16 +72,6 @@
 
       .fade-slide-up {
         animation: fadeSlideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-      }
-
-      @keyframes countdown {
-        0% { transform: scale(1.5); opacity: 0; }
-        50% { transform: scale(1); opacity: 1; }
-        100% { transform: scale(0.5); opacity: 0; }
-      }
-
-      .animate-countdown {
-        animation: countdown 1s ease-in-out infinite;
       }
     </style>
 <script type="importmap">

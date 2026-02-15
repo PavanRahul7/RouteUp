@@ -1,11 +1,16 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { Route, RunHistory, LatLng } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
+/**
+ * Gemini service providing AI-driven features for route generation, 
+ * geocoding, and personalized coaching.
+ */
 export const geminiService = {
+  // Geocode a location query to LatLng coordinates
   async geocodeLocation(query: string): Promise<LatLng | null> {
     try {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: `Given the location query "${query}", return ONLY a JSON object with "lat" and "lng" properties for that location. If you don't know the exact location, provide coordinates for a major landmark or city center associated with it. Do not include any other text.`,
@@ -29,8 +34,10 @@ export const geminiService = {
     }
   },
 
+  // Reverse geocode coordinates to a human-readable city/region string
   async reverseGeocode(lat: number, lng: number): Promise<string | null> {
     try {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: `Identify the city and region/country for these coordinates: Lat ${lat}, Lng ${lng}. Return ONLY a short string like "Brooklyn, NY" or "Shinjuku, Tokyo". Do not include any other text.`,
@@ -42,8 +49,49 @@ export const geminiService = {
     }
   },
 
+  // Fetch cafe ratings using Google Search grounding
+  async getCafeRatings(cafes: { name: string; id: string }[], locationHint: string): Promise<any[]> {
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const cafeList = cafes.map(c => c.name).join(", ");
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: `Find the current Google Maps ratings and review counts for these coffee shops in or near ${locationHint}: ${cafeList}. 
+        Return ONLY a JSON array of objects, each containing: "name" (the exact cafe name), "rating" (number), "reviews" (string e.g. "1.2k"), and "url" (google maps URL).`,
+        config: {
+          tools: [{ googleSearch: {} }],
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                name: { type: Type.STRING },
+                rating: { type: Type.NUMBER },
+                reviews: { type: Type.STRING },
+                url: { type: Type.STRING }
+              },
+              required: ["name", "rating", "reviews", "url"]
+            }
+          }
+        }
+      });
+
+      if (response.candidates?.[0]?.groundingMetadata?.groundingChunks) {
+        console.debug('Cafe Search Grounding Chunks:', response.candidates[0].groundingMetadata.groundingChunks);
+      }
+
+      return JSON.parse(response.text.trim());
+    } catch (e) {
+      console.error('Error fetching cafe ratings:', e);
+      return [];
+    }
+  },
+
+  // Generate an engaging description for a new route
   async generateRouteDescription(name: string, distance: number, elevation: number, tags: string[]): Promise<string> {
     try {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const isCoffee = tags.some(t => t.toLowerCase().includes('coffee') || t.toLowerCase().includes('cafe'));
       const prompt = isCoffee 
         ? `Write a short, engaging 2-sentence description for a coffee-themed running route named "${name}". 
@@ -64,8 +112,10 @@ export const geminiService = {
     }
   },
 
+  // Provide motivational coaching tips after a session
   async getCoachingTips(run: RunHistory): Promise<string> {
     try {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: `I just finished a run. 

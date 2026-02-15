@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { LatLng, Route, Difficulty, UnitSystem } from '../types';
 import { geminiService } from '../services/geminiService';
@@ -8,9 +9,17 @@ declare var L: any;
 
 interface RouteSegment {
   id: string;
-  clickPoint: LatLng; // The logical end of this segment
-  pathPoints: LatLng[]; // The actual geometry (snapped)
+  clickPoint: LatLng;
+  pathPoints: LatLng[];
   isSnap: boolean;
+}
+
+interface CafeEnriched extends LatLng {
+  id: string;
+  name: string;
+  rating?: number;
+  reviewsCount?: string;
+  googleUrl?: string;
 }
 
 interface RouteCreatorProps {
@@ -24,6 +33,7 @@ const RouteCreator: React.FC<RouteCreatorProps> = ({ unitSystem, onSave, onCance
   const [segments, _setSegments] = useState<RouteSegment[]>([]);
   const segmentsRef = useRef<RouteSegment[]>([]);
   const [past, setPast] = useState<RouteSegment[][]>([]);
+  const [future, setFuture] = useState<RouteSegment[][]>([]);
   const [isSnapEnabled, setIsSnapEnabled] = useState(true);
   const isSnapRef = useRef(isSnapEnabled);
   
@@ -34,7 +44,7 @@ const RouteCreator: React.FC<RouteCreatorProps> = ({ unitSystem, onSave, onCance
   const [distance, setDistance] = useState(initialRoute?.distance || 0);
   const [isSaving, setIsSaving] = useState(false);
   const [isRouting, setIsRouting] = useState(false);
-  const [cafes, setCafes] = useState<any[]>([]);
+  const [cafes, setCafes] = useState<CafeEnriched[]>([]);
   
   const [isTracing, setIsTracing] = useState(false);
   const tracePointsRef = useRef<LatLng[]>([]);
@@ -58,6 +68,7 @@ const RouteCreator: React.FC<RouteCreatorProps> = ({ unitSystem, onSave, onCance
 
   const pushToHistory = useCallback((newSegments: RouteSegment[]) => {
     setPast(prev => [...prev.slice(-19), segmentsRef.current]);
+    setFuture([]); // Clear future on new action
     setSegments(newSegments);
   }, [setSegments]);
 
@@ -114,28 +125,42 @@ const RouteCreator: React.FC<RouteCreatorProps> = ({ unitSystem, onSave, onCance
     if (points.length < 2) return;
     const mid = points[Math.floor(points.length / 2)];
     try {
-      const query = `[out:json];node["amenity"="cafe"](around:350,${mid.lat},${mid.lng});out;`;
+      const query = `[out:json];node["amenity"="cafe"](around:400,${mid.lat},${mid.lng});out;`;
       const response = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`);
       
       if (!response.ok) return;
-
       const contentType = response.headers.get("content-type");
-      if (!contentType || !contentType.includes("application/json")) {
-        console.warn("Overpass returned non-JSON. Server may be busy.");
-        return;
-      }
+      if (!contentType || !contentType.includes("application/json")) return;
 
       const data = await response.json();
-      if (data.elements) {
+      if (data.elements && data.elements.length > 0) {
+        const foundCafes = data.elements.map((el: any) => ({
+          id: el.id.toString(),
+          lat: el.lat,
+          lng: el.lon,
+          name: el.tags.name || 'Unknown Cafe'
+        }));
+
         setCafes(prev => {
           const newCafes = [...prev];
-          data.elements.forEach((el: any) => {
-            if (!newCafes.find(c => c.id === el.id)) newCafes.push(el);
+          foundCafes.forEach((fc: any) => {
+            if (!newCafes.find(c => c.id === fc.id)) newCafes.push(fc);
           });
           return newCafes;
         });
+
+        const locationHint = await geminiService.reverseGeocode(mid.lat, mid.lng);
+        const ratingsArray = await geminiService.getCafeRatings(foundCafes, locationHint || 'this area');
+        
+        setCafes(prev => prev.map(c => {
+          const info = ratingsArray.find((r: any) => r.name === c.name);
+          if (info) {
+            return { ...c, rating: info.rating, reviewsCount: info.reviews, googleUrl: info.url };
+          }
+          return c;
+        }));
       }
-    } catch (e) { console.error("Overpass handling error:", e); }
+    } catch (e) { console.error("Cafe loading error:", e); }
   };
 
   const handleAddPoint = async (latlng: any) => {
@@ -245,9 +270,18 @@ const RouteCreator: React.FC<RouteCreatorProps> = ({ unitSystem, onSave, onCance
   const handleUndo = useCallback(() => {
     if (past.length === 0) return;
     const previous = past[past.length - 1];
+    setFuture(prev => [segmentsRef.current, ...prev]);
     setPast(prev => prev.slice(0, -1));
     setSegments(previous);
   }, [past, setSegments]);
+
+  const handleRedo = useCallback(() => {
+    if (future.length === 0) return;
+    const next = future[0];
+    setPast(prev => [...prev, segmentsRef.current]);
+    setFuture(prev => prev.slice(1));
+    setSegments(next);
+  }, [future, setSegments]);
 
   const handleClear = () => {
     pushToHistory([]);
@@ -295,26 +329,42 @@ const RouteCreator: React.FC<RouteCreatorProps> = ({ unitSystem, onSave, onCance
 
     cafeMarkersRef.current.forEach(m => m.remove());
     cafeMarkersRef.current = cafes.map(cafe => {
-      const cafeName = cafe.tags.name || 'Coffee Pit Stop';
+      const cafeName = cafe.name;
       const icon = L.divIcon({
         className: 'cafe-marker',
-        html: `<div class="glass" style="width: 42px; height: 42px; border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 22px; border: 2px solid #d4943a; box-shadow: 0 8px 32px rgba(0,0,0,0.7); transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);">☕</div>`,
-        iconSize: [42, 42],
-        iconAnchor: [21, 21]
+        html: `
+          <div class="relative">
+            <div class="glass" style="width: 46px; height: 46px; border-radius: 18px; display: flex; align-items: center; justify-content: center; font-size: 24px; border: 2.5px solid #d4943a; box-shadow: 0 8px 32px rgba(0,0,0,0.8); transition: all 0.3s ease;">☕</div>
+            ${cafe.rating ? `
+              <div class="absolute -top-3 -right-3 bg-amber-400 text-black text-[9px] font-black px-2 py-1 rounded-lg border-2 border-[#1a1210] shadow-lg flex items-center gap-0.5">
+                ⭐ ${cafe.rating}
+              </div>
+            ` : ''}
+          </div>
+        `,
+        iconSize: [46, 46],
+        iconAnchor: [23, 23]
       });
-      const marker = L.marker([cafe.lat, cafe.lon], { icon }).addTo(mapInstance.current);
+      const marker = L.marker([cafe.lat, cafe.lng], { icon }).addTo(mapInstance.current);
       
       marker.bindTooltip(`
-        <div style="background: #1a1210; color: #f5e6d0; padding: 6px 12px; border-radius: 8px; border: 1px solid #d4943a; font-weight: bold; font-family: sans-serif; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
-          ${cafeName}
+        <div style="background: #1a1210; color: #f5e6d0; padding: 8px 14px; border-radius: 12px; border: 1.5px solid #d4943a; font-family: 'Plus Jakarta Sans', sans-serif; box-shadow: 0 8px 24px rgba(0,0,0,0.6);">
+          <div class="font-bold text-sm mb-1">${cafeName}</div>
+          ${cafe.rating ? `<div class="text-[10px] flex items-center gap-1.5 font-bold text-amber-400">⭐ ${cafe.rating} <span class="opacity-40 text-white font-normal">(${cafe.reviewsCount})</span></div>` : '<div class="text-[10px] opacity-40">Fetching details...</div>'}
         </div>
-      `, { direction: 'top', offset: [0, -20], opacity: 1, className: 'custom-cafe-tooltip' });
+      `, { direction: 'top', offset: [0, -25], opacity: 1 });
 
       marker.bindPopup(`
-        <div class="p-3 space-y-2 text-[#f5e6d0]">
-          <h4 class="text-xl font-bold border-b border-[#d4943a]/30 pb-1">${cafeName}</h4>
-          <p class="text-[10px] opacity-60 uppercase tracking-widest">Fresh Batch Nearby</p>
-          <button class="w-full bg-[#d4943a] text-[#1a1210] font-black text-[10px] py-2 rounded-lg mt-2 uppercase tracking-tighter">Add to Route</button>
+        <div class="p-4 space-y-3 text-[#f5e6d0] font-sans min-w-[180px]">
+          <h4 class="text-xl font-bold border-b border-[#d4943a]/30 pb-2">${cafeName}</h4>
+          ${cafe.rating ? `
+            <div class="flex flex-col gap-1">
+              <div class="text-xs font-bold text-amber-400 uppercase tracking-tighter">Google Rating: ⭐ ${cafe.rating}</div>
+              <div class="text-[10px] opacity-60">Based on ${cafe.reviewsCount} reviews</div>
+              <a href="${cafe.googleUrl}" target="_blank" class="text-[10px] text-[#d4943a] underline hover:text-white transition-colors mt-1">View on Google Maps</a>
+            </div>
+          ` : '<div class="text-xs opacity-40 italic">Finding the perfect roast details...</div>'}
+          <button class="w-full bg-[#d4943a] text-[#1a1210] font-black text-[11px] py-3 rounded-xl mt-3 uppercase tracking-widest shadow-lg active:scale-95 transition-all">Add to Route</button>
         </div>
       `);
 
@@ -393,7 +443,7 @@ const RouteCreator: React.FC<RouteCreatorProps> = ({ unitSystem, onSave, onCance
   const handleSave = async () => {
     if (!name || distance === 0) return;
     setIsSaving(true);
-    const desc = await geminiService.generateRouteDescription(name, parseFloat(distance.toFixed(1)), Math.round(distance * 12), cafes.map(c => c.tags.name));
+    const desc = await geminiService.generateRouteDescription(name, parseFloat(distance.toFixed(1)), Math.round(distance * 12), cafes.map(c => c.name));
     onSave({
       id: initialRoute?.id || Math.random().toString(36).substr(2, 9),
       name, description: desc, creatorId: 'user_1', creatorName: 'RunnerOne',
@@ -446,9 +496,15 @@ const RouteCreator: React.FC<RouteCreatorProps> = ({ unitSystem, onSave, onCance
             <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
          </button>
          
-         <button onClick={handleUndo} disabled={past.length === 0} title="Undo last action" className="glass w-16 h-16 rounded-[1.8rem] flex items-center justify-center text-white disabled:opacity-10 active:scale-90 transition-all">
-            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>
-         </button>
+         <div className="flex flex-col gap-2">
+           <button onClick={handleUndo} disabled={past.length === 0} title="Undo last action" className="glass w-16 h-16 rounded-[1.8rem] flex items-center justify-center text-white disabled:opacity-10 active:scale-90 transition-all">
+              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>
+           </button>
+           <button onClick={handleRedo} disabled={future.length === 0} title="Redo action" className="glass w-16 h-16 rounded-[1.8rem] flex items-center justify-center text-white disabled:opacity-10 active:scale-90 transition-all">
+              <svg className="h-6 w-6 scale-x-[-1]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>
+           </button>
+         </div>
+
          <button onClick={handleClear} title="Clear all" className="glass w-16 h-16 rounded-[1.8rem] flex items-center justify-center text-red-400 active:scale-90 transition-all">
             <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" /></svg>
          </button>
